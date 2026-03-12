@@ -7,10 +7,15 @@ const MAX_RETRIES = 3;
 
 export async function generateMessage({ name, bio, campaignContext, ctaLink, model }) {
   const useModel = model || DEFAULT_MODEL;
+  const hasBio = bio && bio.trim().length > 0;
+
+  const bioRule = hasBio
+    ? '- Reference something specific from the recipient\'s bio to show genuine interest.'
+    : '- The recipient has no bio, so greet them warmly by name and jump straight into the pitch.';
 
   const systemPrompt = `You are a friendly outreach copywriter. Write a casual, friendly 2-3 sentence Twitter DM.
 Rules:
-- Mention something specific from the recipient's bio to show genuine interest.
+${bioRule}
 - Subtly pitch the following service: ${campaignContext}
 - End the message by naturally sharing this link: ${ctaLink}
 - Do NOT be overly formal or salesy.
@@ -18,7 +23,9 @@ Rules:
 - Keep it under 500 characters.
 - Return ONLY the DM text — no quotes, no preamble, no explanation.`;
 
-  const userPrompt = `Recipient name: ${name || 'there'}\nRecipient bio: ${bio || 'No bio available'}`;
+  const userPrompt = hasBio
+    ? `Recipient name: ${name || 'there'}\nRecipient bio: ${bio}`
+    : `Recipient name: ${name || 'there'}`;
 
   let lastError = null;
 
@@ -34,8 +41,22 @@ Rules:
         max_tokens: 300,
       });
 
-      const text = response.choices?.[0]?.message?.content?.trim();
-      if (text && text.length > 5) return text;
+      const choice = response.choices?.[0];
+      let text = choice?.message?.content?.trim();
+
+      // Some reasoning models put tokens in a 'reasoning' field and leave content empty.
+      // Fall back to extracting the DM from reasoning if content is blank.
+      if ((!text || text.length <= 5) && choice?.message?.reasoning) {
+        const reasoning = choice.message.reasoning;
+        // Look for quoted DM text inside reasoning
+        const quoted = reasoning.match(/"([^"]{20,})"/s) || reasoning.match(/'([^']{20,})'/s);
+        if (quoted) text = quoted[1].trim();
+      }
+
+      if (text && text.length > 5) {
+        console.log(`[Groq] Generated ${text.length} chars on attempt ${attempt} for ${name}`);
+        return text;
+      }
 
       lastError = new Error(`Groq returned empty/short message (attempt ${attempt}/${MAX_RETRIES})`);
       console.warn(`[Groq] Empty response on attempt ${attempt}, retrying...`);

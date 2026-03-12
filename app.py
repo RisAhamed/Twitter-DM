@@ -101,11 +101,18 @@ def list_csv_files():
 def generate_message_groq(name, bio, campaign_context, cta_link, model=None):
     """Call Groq with retry logic. Returns (message, error)."""
     use_model = model or DEFAULT_MODEL
+    has_bio = bool(bio and bio.strip())
+
+    bio_rule = (
+        "- Reference something specific from the recipient's bio to show genuine interest."
+        if has_bio
+        else "- The recipient has no bio, so greet them warmly by name and jump straight into the pitch."
+    )
 
     system_prompt = (
         "You are a friendly outreach copywriter. Write a casual, friendly 2-3 sentence Twitter DM.\n"
         "Rules:\n"
-        "- Mention something specific from the recipient's bio to show genuine interest.\n"
+        f"{bio_rule}\n"
         f"- Subtly pitch the following service: {campaign_context}\n"
         f"- End the message by naturally sharing this link: {cta_link}\n"
         "- Do NOT be overly formal or salesy.\n"
@@ -114,7 +121,11 @@ def generate_message_groq(name, bio, campaign_context, cta_link, model=None):
         "- Return ONLY the DM text — no quotes, no preamble, no explanation."
     )
 
-    user_prompt = f"Recipient name: {name or 'there'}\nRecipient bio: {bio or 'No bio available'}"
+    user_prompt = (
+        f"Recipient name: {name or 'there'}\nRecipient bio: {bio}"
+        if has_bio
+        else f"Recipient name: {name or 'there'}"
+    )
 
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
@@ -129,6 +140,15 @@ def generate_message_groq(name, bio, campaign_context, cta_link, model=None):
                 max_tokens=300,
             )
             text = (response.choices[0].message.content or "").strip()
+
+            # Fallback: some reasoning models put output in a reasoning field
+            if (not text or len(text) <= 5) and hasattr(response.choices[0].message, "reasoning"):
+                import re
+                reasoning = response.choices[0].message.reasoning or ""
+                quoted = re.search(r'"([^"]{20,})"', reasoning) or re.search(r"'([^']{20,})'", reasoning)
+                if quoted:
+                    text = quoted.group(1).strip()
+
             if text and len(text) > 5:
                 return text, None
             last_error = f"Empty/short response on attempt {attempt}/{MAX_RETRIES}"
