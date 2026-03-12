@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Twitter DM Campaign</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: { surface: '#111827', panel: '#1a2235', border: '#1e293b' }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { background: #0b1120; }
+    .glass { background: rgba(17,24,39,.7); border: 1px solid rgba(30,41,59,.6); backdrop-filter: blur(12px); }
+    input, textarea, select { background: #0f172a !important; border: 1px solid #1e293b !important; color: #e2e8f0 !important; }
+    input:focus, textarea:focus { outline: none !important; border-color: #3b82f6 !important; box-shadow: 0 0 0 3px rgba(59,130,246,.15) !important; }
+    ::placeholder { color: #475569 !important; }
+    .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; animation: blink 1.4s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+  </style>
+</head>
+<body class="min-h-screen text-slate-200 font-sans antialiased">
+
+  <!-- Navbar -->
+  <nav class="sticky top-0 z-50 glass border-b border-border px-5 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <svg class="w-7 h-7 text-blue-500" viewBox="0 0 24 24" fill="currentColor"><path d="M22.46 6c-.77.35-1.6.58-2.46.69a4.3 4.3 0 0 0 1.88-2.38 8.59 8.59 0 0 1-2.72 1.04 4.28 4.28 0 0 0-7.32 3.91A12.16 12.16 0 0 1 3 4.79a4.28 4.28 0 0 0 1.32 5.72 4.24 4.24 0 0 1-1.94-.54v.05a4.28 4.28 0 0 0 3.43 4.2 4.27 4.27 0 0 1-1.93.07 4.29 4.29 0 0 0 4 2.97A8.59 8.59 0 0 1 2 18.58a12.13 12.13 0 0 0 6.56 1.92c7.88 0 12.2-6.53 12.2-12.2l-.01-.56A8.72 8.72 0 0 0 22.46 6z"/></svg>
+      <span class="text-base font-semibold tracking-tight">DM Automation</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <div id="statusBadge" class="flex items-center gap-1.5 text-xs text-slate-500">
+        <span class="w-2 h-2 rounded-full bg-slate-600"></span> Idle
+      </div>
+      <span id="clockDisplay" class="text-[11px] text-slate-600 font-mono hidden"></span>
+    </div>
+  </nav>
+
+  <main class="max-w-[1400px] mx-auto px-5 py-5 grid lg:grid-cols-3 gap-5">
+
+    <!-- ===== COL 1: Data ===== -->
+    <div class="space-y-5">
+
+      <!-- Upload -->
+      <section class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-[13px] font-semibold text-slate-300">Lead Files</h2>
+          <span id="totalLeads" class="text-[11px] font-mono text-blue-400 bg-blue-950/40 px-2 py-0.5 rounded-md">0 leads</span>
+        </div>
+
+        <label class="group flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-slate-700/60 rounded-xl cursor-pointer hover:border-blue-500/40 hover:bg-blue-950/10 transition-all mb-3">
+          <input id="csvUpload" type="file" accept=".csv" multiple class="hidden" />
+          <svg class="w-5 h-5 text-slate-500 group-hover:text-blue-400 mb-1 transition" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L8 8m4-4l4 4m-12 8a4 4 0 004 4h8a4 4 0 004-4"/></svg>
+          <span class="text-xs text-slate-500 group-hover:text-blue-400 transition">Upload CSV files</span>
+        </label>
+        <p id="uploadStatus" class="text-[11px] text-slate-500 mb-2 text-center"></p>
+
+        <div id="fileList" class="space-y-1 max-h-32 overflow-auto"></div>
+      </section>
+
+      <!-- Live Stats (always visible, updates on run) -->
+      <section class="glass rounded-2xl p-5">
+        <h2 class="text-[13px] font-semibold text-slate-300 mb-4">Campaign Stats</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-emerald-950/30 border border-emerald-900/20 rounded-xl p-3 text-center">
+            <div id="statSent" class="text-2xl font-bold text-emerald-400">0</div>
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">Sent</div>
+          </div>
+          <div class="bg-red-950/30 border border-red-900/20 rounded-xl p-3 text-center">
+            <div id="statFailed" class="text-2xl font-bold text-red-400">0</div>
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">Failed</div>
+          </div>
+          <div class="bg-amber-950/30 border border-amber-900/20 rounded-xl p-3 text-center">
+            <div id="statSkipped" class="text-2xl font-bold text-amber-400">0</div>
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">Skipped</div>
+          </div>
+          <div class="bg-blue-950/30 border border-blue-900/20 rounded-xl p-3 text-center">
+            <div id="statTotal" class="text-2xl font-bold text-blue-400">0</div>
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">Target</div>
+          </div>
+        </div>
+        <div id="currentLead" class="mt-3 hidden">
+          <div class="flex items-center gap-2 bg-slate-800/50 rounded-lg px-3 py-2">
+            <div class="live-dot"></div>
+            <span class="text-xs text-slate-400">Messaging</span>
+            <span id="statCurrent" class="text-xs font-mono text-blue-400">—</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===== COL 2: Settings ===== -->
+    <div class="space-y-5">
+
+      <section class="glass rounded-2xl p-5">
+        <h2 class="text-[13px] font-semibold text-slate-300 mb-4">Campaign Settings</h2>
+
+        <div class="space-y-4">
+          <div>
+            <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">Service Pitch / Prompt</label>
+            <textarea id="campaignContext" rows="5" class="w-full rounded-xl text-sm px-3.5 py-3 resize-none leading-relaxed" placeholder="Describe your service offering. This is sent to the AI to craft personalized DMs.&#10;&#10;Example: We build AI voice agents for HVAC companies that answer calls 24/7, book appointments, and follow up with leads automatically..."></textarea>
+          </div>
+
+          <div>
+            <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">Call-to-Action Link</label>
+            <input id="ctaLink" type="url" class="w-full rounded-xl text-sm px-3.5 py-2.5" placeholder="https://calendly.com/your-link" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">DM Limit</label>
+              <input id="dailyLimit" type="number" min="1" max="100" value="40" class="w-full rounded-xl text-sm px-3.5 py-2.5" />
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">AI Model</label>
+              <input id="modelId" type="text" class="w-full rounded-xl text-sm px-3.5 py-2.5" value="openai/gpt-oss-120b" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Action Buttons -->
+      <section class="glass rounded-2xl p-5">
+        <div class="flex gap-3">
+          <button id="btnStart" onclick="startCampaign()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded-xl px-4 py-3 transition-all active:scale-[0.97] flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><polygon points="6,3 17,10 6,17"/></svg>
+            Start Campaign
+          </button>
+          <button id="btnStop" onclick="stopCampaign()" class="flex-1 bg-red-600/80 hover:bg-red-500 text-white font-semibold text-sm rounded-xl px-4 py-3 transition-all active:scale-[0.97] items-center justify-center gap-2 hidden">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="1.5"/></svg>
+            Stop Campaign
+          </button>
+        </div>
+        <p class="text-[10px] text-slate-600 text-center mt-2.5">~30-40 DMs per hour &middot; 90-120s between messages</p>
+      </section>
+
+    </div>
+
+    <!-- ===== COL 3: Message Log ===== -->
+    <section class="glass rounded-2xl p-5 lg:row-span-2">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-[13px] font-semibold text-slate-300">Message Log</h2>
+        <button onclick="refreshLogs()" class="text-[11px] text-blue-400 hover:text-blue-300 transition font-medium">Refresh</button>
+      </div>
+
+      <div id="logContainer" class="space-y-2 overflow-auto max-h-[calc(100vh-12rem)]">
+        <p id="emptyMsg" class="text-center text-slate-600 py-20 text-sm">No messages sent yet</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // ---------- Upload ----------
+    document.getElementById('csvUpload').addEventListener('change', async (e) => {
+      const files = e.target.files;
+      if (!files.length) return;
+      const status = document.getElementById('uploadStatus');
+      status.textContent = 'Uploading...';
+      status.className = 'text-[11px] text-blue-400 mb-2 text-center';
+
+      let ok = 0;
+      for (const file of files) {
+        try {
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': file.name },
+            body: file,
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          ok++;
+        } catch (err) {
+          status.textContent = `Failed: ${err.message}`;
+          status.className = 'text-[11px] text-red-400 mb-2 text-center';
+        }
+      }
+      if (ok) { status.textContent = `${ok} file(s) uploaded`; status.className = 'text-[11px] text-emerald-400 mb-2 text-center'; }
+      e.target.value = '';
+      setTimeout(() => { status.textContent = ''; }, 3000);
+      await refreshFiles();
+    });
+
+    async function refreshFiles() {
+      try {
+        const [filesRes, leadsRes] = await Promise.all([fetch('/api/files'), fetch('/api/leads')]);
+        const files = await filesRes.json();
+        const leadsData = await leadsRes.json();
+
+        document.getElementById('fileList').innerHTML = files.map(f =>
+          `<div class="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/40 rounded-lg px-3 py-2">
+            <svg class="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <span class="truncate">${esc(f)}</span>
+          </div>`
+        ).join('');
+
+        document.getElementById('totalLeads').textContent = `${leadsData.total} leads`;
+      } catch {}
+    }
+
+    // ---------- Campaign ----------
+    async function startCampaign() {
+      const campaignContext = document.getElementById('campaignContext').value.trim();
+      const ctaLink = document.getElementById('ctaLink').value.trim();
+      const dailyLimit = document.getElementById('dailyLimit').value;
+      const model = document.getElementById('modelId').value.trim();
+
+      if (!campaignContext || !ctaLink) return alert('Fill in Service Pitch and CTA Link.');
+
+      const res = await fetch('/api/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignContext, ctaLink, dailyLimit, model }),
+      });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error);
+
+      document.getElementById('btnStart').classList.add('hidden');
+      document.getElementById('btnStop').classList.remove('hidden');
+      document.getElementById('btnStop').classList.add('flex');
+      startPolling();
+    }
+
+    async function stopCampaign() {
+      await fetch('/api/stop', { method: 'POST' });
+      document.getElementById('btnStop').classList.add('hidden');
+      document.getElementById('btnStop').classList.remove('flex');
+      document.getElementById('btnStart').classList.remove('hidden');
+    }
+
+    // ---------- Polling ----------
+    let pollTimer = null;
+    function startPolling() {
+      if (pollTimer) return;
+      pollTimer = setInterval(async () => { await refreshStatus(); await refreshLogs(); }, 3000);
+    }
+
+    async function refreshStatus() {
+      try {
+        const s = await (await fetch('/api/status')).json();
+        const badge = document.getElementById('statusBadge');
+        const currentEl = document.getElementById('currentLead');
+
+        if (s.running) {
+          badge.innerHTML = '<div class="live-dot"></div> <span class="text-emerald-400 text-xs font-medium">Running</span>';
+          currentEl.classList.remove('hidden');
+        } else {
+          badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-600"></span> <span class="text-xs text-slate-500">Idle</span>';
+          currentEl.classList.add('hidden');
+          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          document.getElementById('btnStop').classList.add('hidden');
+          document.getElementById('btnStop').classList.remove('flex');
+          document.getElementById('btnStart').classList.remove('hidden');
+        }
+        document.getElementById('statCurrent').textContent = s.current ? `@${s.current}` : '—';
+        document.getElementById('statSent').textContent = s.sent;
+        document.getElementById('statFailed').textContent = s.failed;
+        document.getElementById('statSkipped').textContent = s.skipped;
+        document.getElementById('statTotal').textContent = s.total;
+      } catch {}
+    }
+
+    // ---------- Log (card-based) ----------
+    async function refreshLogs() {
+      try {
+        const logs = await (await fetch('/api/logs')).json();
+        const container = document.getElementById('logContainer');
+        const empty = document.getElementById('emptyMsg');
+
+        if (!logs.length) { container.innerHTML = ''; container.appendChild(empty); empty.classList.remove('hidden'); return; }
+
+        const html = logs.slice().reverse().map(l => {
+          const isSent = l.status === 'Sent';
+          const accent = isSent ? 'emerald' : 'red';
+          const content = l.message || l.error || '';
+          return `
+            <div class="bg-slate-800/30 border border-slate-700/30 rounded-xl px-4 py-3 hover:bg-slate-800/50 transition-colors">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-mono text-blue-400">@${esc(l.username)}</span>
+                  <span class="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase bg-${accent}-900/30 text-${accent}-400 border border-${accent}-800/20">${esc(l.status)}</span>
+                </div>
+                <span class="text-[10px] text-slate-600">${formatTime(l.timestamp)}</span>
+              </div>
+              ${content ? `<p class="text-[12px] text-slate-400 leading-relaxed line-clamp-2">${esc(content)}</p>` : ''}
+            </div>`;
+        }).join('');
+
+        container.innerHTML = html;
+      } catch {}
+    }
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+    function formatTime(ts) {
+      if (!ts) return '';
+      const d = new Date(ts);
+      return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Initial load
+    refreshFiles();
+    refreshStatus();
+    refreshLogs();
+  </script>
+</body>
+</html>
