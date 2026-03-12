@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
-import { writeFile } from 'fs/promises';
+import { writeFile, appendFile, access } from 'fs/promises';
 import { readLeads, listDataFiles, DATA_DIR } from './src/leads.js';
 import { getSentLog, appendSentLog } from './src/logger.js';
 import { generateMessage } from './src/groq.js';
@@ -10,6 +10,7 @@ import { sendDM, closeBrowser } from './src/puppeteer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const METRICS_PATH = join(__dirname, 'logs', 'dm_metrics.csv');
 
 const app = express();
 app.use(express.json());
@@ -84,6 +85,26 @@ app.get('/api/leads', async (_req, res) => {
   }
 });
 
+// Test Groq message generation (no DM sent)
+app.post('/api/test-message', async (req, res) => {
+  const { name, bio, campaignContext, ctaLink, model } = req.body;
+  if (!campaignContext || !ctaLink) {
+    return res.status(400).json({ error: 'campaignContext and ctaLink are required.' });
+  }
+  try {
+    const message = await generateMessage({
+      name: name || 'Test User',
+      bio: bio || 'HVAC professional',
+      campaignContext,
+      ctaLink,
+      model: (model || '').trim() || undefined,
+    });
+    res.json({ message });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Start a campaign
 app.post('/api/start', async (req, res) => {
   if (campaignRunning) {
@@ -146,6 +167,7 @@ app.post('/api/start', async (req, res) => {
           status: 'Sent',
           error: '',
         });
+        await appendMetrics({ username: lead.username, status: 'Sent', error: '', message });
         sentCount++;
         campaignStats.sent++;
         console.log(`[Campaign] ✓ Sent to @${lead.username} (${sentCount}/${limit})`);
@@ -158,6 +180,7 @@ app.post('/api/start', async (req, res) => {
           status: 'Failed',
           error: err.message,
         });
+        await appendMetrics({ username: lead.username, status: 'Failed', error: err.message, message: '' });
         console.error(`[Campaign] ✗ Failed for @${lead.username}: ${err.message}`);
       }
 
@@ -180,6 +203,20 @@ app.post('/api/start', async (req, res) => {
 });
 
 // ---------- helpers ----------
+
+/** Append a row to logs/dm_metrics.csv */
+async function appendMetrics({ username, status, error, message }) {
+  try {
+    await access(METRICS_PATH);
+  } catch {
+    await appendFile(METRICS_PATH, 'Timestamp,Username,Status,Error_Reason,Generated_Message\n');
+  }
+  const ts = new Date().toISOString();
+  const escape = s => `"${(s || '').replace(/"/g, '""')}"`;
+  const row = `${ts},${escape(username)},${escape(status)},${escape(error)},${escape(message)}\n`;
+  await appendFile(METRICS_PATH, row);
+}
+
 function sleep(ms, shouldAbort) {
   return new Promise(resolve => {
     const interval = setInterval(() => {

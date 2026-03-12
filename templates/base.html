@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}DM Automation{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { background: #0b0f19; }
+    .glass { background: rgba(15,20,35,0.85); border: 1px solid rgba(30,41,59,0.5); backdrop-filter: blur(12px); }
+    .glass-hover:hover { background: rgba(20,28,50,0.9); }
+    input, textarea, select { background: #0f172a !important; border: 1px solid #1e293b !important; color: #e2e8f0 !important; }
+    input:focus, textarea:focus, select:focus { outline: none !important; border-color: #3b82f6 !important; box-shadow: 0 0 0 3px rgba(59,130,246,.12) !important; }
+    ::placeholder { color: #475569 !important; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+    .nav-link { transition: all 0.15s; }
+    .nav-link:hover { background: rgba(59,130,246,0.08); }
+    .nav-link.active { background: rgba(59,130,246,0.12); color: #60a5fa; border-color: #3b82f6; }
+    .flash-toast { animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; animation: blink 1.4s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body class="min-h-screen text-slate-200 font-sans antialiased">
+
+  <!-- Navigation -->
+  <nav class="sticky top-0 z-50 glass border-b border-slate-800/60">
+    <div class="max-w-7xl mx-auto px-5 py-2.5 flex items-center justify-between">
+      <div class="flex items-center gap-6">
+        <a href="/" class="flex items-center gap-2.5">
+          <svg class="w-6 h-6 text-blue-500" viewBox="0 0 24 24" fill="currentColor"><path d="M22.46 6c-.77.35-1.6.58-2.46.69a4.3 4.3 0 0 0 1.88-2.38 8.59 8.59 0 0 1-2.72 1.04 4.28 4.28 0 0 0-7.32 3.91A12.16 12.16 0 0 1 3 4.79a4.28 4.28 0 0 0 1.32 5.72 4.24 4.24 0 0 1-1.94-.54v.05a4.28 4.28 0 0 0 3.43 4.2 4.27 4.27 0 0 1-1.93.07 4.29 4.29 0 0 0 4 2.97A8.59 8.59 0 0 1 2 18.58a12.13 12.13 0 0 0 6.56 1.92c7.88 0 12.2-6.53 12.2-12.2l-.01-.56A8.72 8.72 0 0 0 22.46 6z"/></svg>
+          <span class="text-sm font-semibold tracking-tight">DM Automation</span>
+        </a>
+        <div class="flex items-center gap-1">
+          <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %} text-xs font-medium px-3 py-1.5 rounded-lg border border-transparent">Dashboard</a>
+          <a href="/leads" class="nav-link {% if request.path == '/leads' %}active{% endif %} text-xs font-medium px-3 py-1.5 rounded-lg border border-transparent text-slate-400">Leads</a>
+          <a href="/test-message" class="nav-link {% if request.path == '/test-message' %}active{% endif %} text-xs font-medium px-3 py-1.5 rounded-lg border border-transparent text-slate-400">Test Message</a>
+          <a href="/logs" class="nav-link {% if request.path == '/logs' %}active{% endif %} text-xs font-medium px-3 py-1.5 rounded-lg border border-transparent text-slate-400">Logs</a>
+        </div>
+      </div>
+      <div id="nodeStatus" class="flex items-center gap-1.5 text-[11px] text-slate-500">
+        <span class="w-2 h-2 rounded-full bg-slate-600"></span> Checking...
+      </div>
+    </div>
+  </nav>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="max-w-7xl mx-auto px-5 pt-3 space-y-2">
+    {% for category, message in messages %}
+    <div class="flash-toast glass rounded-lg px-4 py-2.5 text-sm flex items-center gap-2
+      {% if category == 'error' %}border-red-800/40 text-red-400
+      {% elif category == 'success' %}border-emerald-800/40 text-emerald-400
+      {% else %}border-blue-800/40 text-blue-400{% endif %}">
+      {% if category == 'error' %}
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      {% elif category == 'success' %}
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+      {% endif %}
+      {{ message }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- Content -->
+  <main class="max-w-7xl mx-auto px-5 py-5">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    // Check Node.js backend status
+    async function checkNode() {
+      const el = document.getElementById('nodeStatus');
+      try {
+        const r = await fetch('/api/proxy/status');
+        const s = await r.json();
+        if (s.running) {
+          el.innerHTML = '<div class="live-dot"></div> <span class="text-emerald-400 text-[11px] font-medium">Campaign Running</span>';
+        } else {
+          el.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-600"></span> <span class="text-emerald-400 text-[11px]">Backend Online</span>';
+        }
+      } catch {
+        el.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> <span class="text-red-400 text-[11px]">Backend Offline</span>';
+      }
+    }
+    checkNode();
+    setInterval(checkNode, 5000);
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — DM Automation{% endblock %}
+
+{% block content %}
+<div class="grid lg:grid-cols-3 gap-5">
+
+  <!-- ═══ Column 1: Overview ═══ -->
+  <div class="space-y-5">
+
+    <!-- Stats -->
+    <section class="glass rounded-2xl p-5">
+      <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Pipeline Overview</h2>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-blue-950/30 border border-blue-900/20 rounded-xl p-4 text-center">
+          <div class="text-3xl font-bold text-blue-400">{{ total_leads }}</div>
+          <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-1">Total Leads</div>
+        </div>
+        <div class="bg-emerald-950/30 border border-emerald-900/20 rounded-xl p-4 text-center">
+          <div class="text-3xl font-bold text-emerald-400">{{ sent_count }}</div>
+          <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-1">Sent</div>
+        </div>
+        <div class="bg-red-950/30 border border-red-900/20 rounded-xl p-4 text-center">
+          <div class="text-3xl font-bold text-red-400">{{ failed_count }}</div>
+          <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-1">Failed</div>
+        </div>
+        <div class="bg-amber-950/30 border border-amber-900/20 rounded-xl p-4 text-center">
+          <div class="text-3xl font-bold text-amber-400">{{ pending_count }}</div>
+          <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-1">Pending</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Data Files -->
+    <section class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Lead Files</h2>
+        <span class="text-[11px] font-mono text-blue-400 bg-blue-950/40 px-2 py-0.5 rounded-md">{{ files|length }} files</span>
+      </div>
+      {% if files %}
+      <div class="space-y-1.5 max-h-40 overflow-auto">
+        {% for f in files %}
+        <div class="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/30 rounded-lg px-3 py-2">
+          <svg class="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <span class="truncate">{{ f }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-xs text-slate-600 text-center py-4">No CSV files in data/</p>
+      {% endif %}
+    </section>
+
+    <!-- Live Campaign Stats -->
+    <section id="liveSection" class="glass rounded-2xl p-5 hidden">
+      <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Live Campaign</h2>
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-emerald-950/30 border border-emerald-900/20 rounded-lg p-2">
+          <div id="liveSent" class="text-xl font-bold text-emerald-400">0</div>
+          <div class="text-[9px] text-slate-500 uppercase">Sent</div>
+        </div>
+        <div class="bg-red-950/30 border border-red-900/20 rounded-lg p-2">
+          <div id="liveFailed" class="text-xl font-bold text-red-400">0</div>
+          <div class="text-[9px] text-slate-500 uppercase">Failed</div>
+        </div>
+        <div class="bg-blue-950/30 border border-blue-900/20 rounded-lg p-2">
+          <div id="liveTotal" class="text-xl font-bold text-blue-400">0</div>
+          <div class="text-[9px] text-slate-500 uppercase">Target</div>
+        </div>
+      </div>
+      <div id="liveCurrent" class="mt-2.5 flex items-center gap-2 bg-slate-800/40 rounded-lg px-3 py-2">
+        <div class="live-dot"></div>
+        <span class="text-[11px] text-slate-400">Messaging</span>
+        <span id="liveUsername" class="text-xs font-mono text-blue-400">—</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- ═══ Column 2: Campaign Controls ═══ -->
+  <div class="space-y-5">
+
+    <section class="glass rounded-2xl p-5">
+      <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Campaign Settings</h2>
+
+      <div class="space-y-4">
+        <div>
+          <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">Service Pitch / Prompt</label>
+          <textarea id="campaignContext" rows="5" class="w-full rounded-xl text-sm px-3.5 py-3 resize-none leading-relaxed" placeholder="Describe your service offering. This is fed to the AI to craft personalized DMs.&#10;&#10;Example: We build AI voice agents for HVAC companies that answer calls 24/7, book appointments, and follow up with leads..."></textarea>
+        </div>
+
+        <div>
+          <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">Call-to-Action Link</label>
+          <input id="ctaLink" type="url" class="w-full rounded-xl text-sm px-3.5 py-2.5" placeholder="https://calendly.com/your-link">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">DM Limit</label>
+            <input id="dailyLimit" type="number" min="1" max="100" value="40" class="w-full rounded-xl text-sm px-3.5 py-2.5">
+          </div>
+          <div>
+            <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">AI Model</label>
+            <input id="modelId" type="text" class="w-full rounded-xl text-sm px-3.5 py-2.5" value="{{ default_model }}">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Actions -->
+    <section class="glass rounded-2xl p-5">
+      <div class="flex gap-3">
+        <button id="btnStart" onclick="startCampaign()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded-xl px-4 py-3 transition-all active:scale-[.97] flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><polygon points="6,3 17,10 6,17"/></svg>
+          Start Campaign
+        </button>
+        <button id="btnStop" onclick="stopCampaign()" class="flex-1 bg-red-600/80 hover:bg-red-500 text-white font-semibold text-sm rounded-xl px-4 py-3 transition-all active:scale-[.97] items-center justify-center gap-2 hidden">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="1.5"/></svg>
+          Stop
+        </button>
+      </div>
+      <p class="text-[10px] text-slate-600 text-center mt-2">~30-40 DMs/hour &middot; 90-120s delay between messages</p>
+
+      <div class="mt-4 pt-3 border-t border-slate-800/50">
+        <a href="/test-message" class="text-xs text-blue-400 hover:text-blue-300 transition flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Test Groq message generation first
+        </a>
+      </div>
+    </section>
+  </div>
+
+  <!-- ═══ Column 3: Recent Activity ═══ -->
+  <section class="glass rounded-2xl p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Recent Messages</h2>
+      <a href="/logs" class="text-[11px] text-blue-400 hover:text-blue-300 transition">View All</a>
+    </div>
+
+    <div id="logContainer" class="space-y-2 overflow-auto max-h-[calc(100vh-10rem)]">
+      {% if logs %}
+      {% for l in logs[:30] %}
+      <div class="bg-slate-800/25 border border-slate-700/25 rounded-xl px-4 py-3 glass-hover transition-colors">
+        <div class="flex items-center justify-between mb-1">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono text-blue-400">@{{ l.username }}</span>
+            <span class="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase
+              {% if l.status == 'Sent' %}bg-emerald-900/30 text-emerald-400 border border-emerald-800/20
+              {% else %}bg-red-900/30 text-red-400 border border-red-800/20{% endif %}">
+              {{ l.status }}
+            </span>
+          </div>
+          <span class="text-[10px] text-slate-600">{{ l.timestamp[:16] if l.timestamp else '' }}</span>
+        </div>
+        {% if l.message %}
+        <p class="text-[12px] text-slate-400 leading-relaxed line-clamp-2">{{ l.message }}</p>
+        {% elif l.error %}
+        <p class="text-[12px] text-red-400/70 leading-relaxed line-clamp-2">{{ l.error }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="text-center py-16">
+        <svg class="w-10 h-10 text-slate-700 mx-auto mb-3" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"/></svg>
+        <p class="text-sm text-slate-600">No messages sent yet</p>
+        <p class="text-xs text-slate-700 mt-1">Start a campaign to see activity here</p>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Campaign controls — proxy through Flask to Node.js
+  async function startCampaign() {
+    const campaignContext = document.getElementById('campaignContext').value.trim();
+    const ctaLink = document.getElementById('ctaLink').value.trim();
+    const dailyLimit = document.getElementById('dailyLimit').value;
+    const model = document.getElementById('modelId').value.trim();
+
+    if (!campaignContext || !ctaLink) return alert('Fill in Service Pitch and CTA Link.');
+
+    const res = await fetch('/api/proxy/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaignContext, ctaLink, dailyLimit, model }),
+    });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to start');
+
+    document.getElementById('btnStart').classList.add('hidden');
+    document.getElementById('btnStop').classList.remove('hidden');
+    document.getElementById('btnStop').style.display = 'flex';
+    document.getElementById('liveSection').classList.remove('hidden');
+    startPolling();
+  }
+
+  async function stopCampaign() {
+    await fetch('/api/proxy/stop', { method: 'POST' });
+    document.getElementById('btnStop').classList.add('hidden');
+    document.getElementById('btnStop').style.display = '';
+    document.getElementById('btnStart').classList.remove('hidden');
+  }
+
+  let pollTimer = null;
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(refreshLive, 3000);
+    refreshLive();
+  }
+
+  async function refreshLive() {
+    try {
+      const s = await (await fetch('/api/proxy/status')).json();
+      if (s.running) {
+        document.getElementById('liveSection').classList.remove('hidden');
+        document.getElementById('liveSent').textContent = s.sent;
+        document.getElementById('liveFailed').textContent = s.failed;
+        document.getElementById('liveTotal').textContent = s.total;
+        document.getElementById('liveUsername').textContent = s.current ? `@${s.current}` : '—';
+      } else {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        document.getElementById('btnStop').classList.add('hidden');
+        document.getElementById('btnStop').style.display = '';
+        document.getElementById('btnStart').classList.remove('hidden');
+      }
+    } catch {}
+  }
+</script>
+{% endblock %}
