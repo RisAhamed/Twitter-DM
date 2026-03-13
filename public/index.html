@@ -106,8 +106,8 @@
 
         <div class="space-y-4">
           <div>
-            <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">Service Pitch / Prompt</label>
-            <textarea id="campaignContext" rows="5" class="w-full rounded-xl text-sm px-3.5 py-3 resize-none leading-relaxed" placeholder="Describe your service offering. This is sent to the AI to craft personalized DMs.&#10;&#10;Example: We build AI voice agents for HVAC companies that answer calls 24/7, book appointments, and follow up with leads automatically..."></textarea>
+            <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">Additional Service Notes (Optional)</label>
+            <textarea id="campaignContext" rows="5" class="w-full rounded-xl text-sm px-3.5 py-3 resize-none leading-relaxed" placeholder="Optional: Add extra campaign instructions. The app already includes your full core service description automatically."></textarea>
           </div>
 
           <div>
@@ -140,7 +140,38 @@
             Stop Campaign
           </button>
         </div>
-        <p class="text-[10px] text-slate-600 text-center mt-2.5">~30-40 DMs per hour &middot; 90-120s between messages</p>
+        <p class="text-[10px] text-slate-600 text-center mt-2.5">~40-50 DMs per hour &middot; 72-90s between messages</p>
+      </section>
+
+      <section class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-[13px] font-semibold text-slate-300">Configuration Snapshot</h2>
+          <span id="configSavedHint" class="text-[10px] text-slate-600">auto-saved</span>
+        </div>
+        <div class="space-y-2 text-xs">
+          <div class="bg-slate-800/40 rounded-lg px-3 py-2">
+            <div class="text-slate-500">Model</div>
+            <div id="cfgModel" class="text-slate-200 font-mono break-all">—</div>
+          </div>
+          <div class="bg-slate-800/40 rounded-lg px-3 py-2">
+            <div class="text-slate-500">CTA Link</div>
+            <div id="cfgCta" class="text-slate-200 break-all">—</div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-slate-800/40 rounded-lg px-3 py-2">
+              <div class="text-slate-500">DM Limit</div>
+              <div id="cfgLimit" class="text-slate-200">—</div>
+            </div>
+            <div class="bg-slate-800/40 rounded-lg px-3 py-2">
+              <div class="text-slate-500">Extra Notes</div>
+              <div id="cfgNotesLen" class="text-slate-200">0 chars</div>
+            </div>
+          </div>
+          <div class="bg-slate-800/40 rounded-lg px-3 py-2">
+            <div class="text-slate-500">Campaign Start</div>
+            <div id="cfgStartedAt" class="text-slate-300">Not running</div>
+          </div>
+        </div>
       </section>
 
     </div>
@@ -159,6 +190,54 @@
   </main>
 
   <script>
+    const DEFAULT_SERVICE_CONTEXT = `Our AI custom voice agents act like an always-on receptionist for HVAC, roofing, plumbing, and other local trades, answering every call even when the team is on a job. They greet customers by name when possible, capture the exact service issue (no cooling, leak, emergency, quote request), and then qualify the lead with smart questions about location, urgency, and budget. Once qualified, they can instantly book appointments into the calendar, send confirmation SMS/email, and notify the business owner so no hot lead ever slips away. Over time, the agent learns common questions for that specific business (pricing ranges, service areas, warranties, promotions) and responds in a tone that matches the owner’s brand voice. This turns missed calls and after-hours inquiries into consistent, trackable leads, while giving customers a fast, personalized experience that feels like talking to a dedicated office staff member.`;
+    const SETTINGS_KEY = 'twitter_dm_dashboard_settings_v1';
+
+    function getSettings() {
+      return {
+        campaignContext: document.getElementById('campaignContext').value,
+        ctaLink: document.getElementById('ctaLink').value,
+        dailyLimit: document.getElementById('dailyLimit').value,
+        model: document.getElementById('modelId').value,
+      };
+    }
+
+    function persistSettings() {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(getSettings()));
+      const hint = document.getElementById('configSavedHint');
+      hint.textContent = 'saved';
+      setTimeout(() => { hint.textContent = 'auto-saved'; }, 1000);
+      updateConfigSnapshot();
+    }
+
+    function restoreSettings() {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) return;
+      try {
+        const saved = JSON.parse(raw);
+        if (typeof saved.campaignContext === 'string') document.getElementById('campaignContext').value = saved.campaignContext;
+        if (typeof saved.ctaLink === 'string') document.getElementById('ctaLink').value = saved.ctaLink;
+        if (typeof saved.dailyLimit === 'string') document.getElementById('dailyLimit').value = saved.dailyLimit;
+        if (typeof saved.model === 'string') document.getElementById('modelId').value = saved.model;
+      } catch {}
+    }
+
+    function updateConfigSnapshot(config = null) {
+      const settings = getSettings();
+      const effective = config || {
+        model: settings.model.trim() || 'openai/gpt-oss-120b',
+        ctaLink: settings.ctaLink.trim() || '—',
+        dailyLimit: settings.dailyLimit || '—',
+        notesLength: (settings.campaignContext || '').trim().length,
+        startedAt: '',
+      };
+      document.getElementById('cfgModel').textContent = effective.model || '—';
+      document.getElementById('cfgCta').textContent = effective.ctaLink || '—';
+      document.getElementById('cfgLimit').textContent = String(effective.dailyLimit || '—');
+      document.getElementById('cfgNotesLen').textContent = `${effective.notesLength || 0} chars`;
+      document.getElementById('cfgStartedAt').textContent = effective.startedAt ? formatTime(effective.startedAt) : 'Not running';
+    }
+
     // ---------- Upload ----------
     document.getElementById('csvUpload').addEventListener('change', async (e) => {
       const files = e.target.files;
@@ -213,7 +292,7 @@
       const dailyLimit = document.getElementById('dailyLimit').value;
       const model = document.getElementById('modelId').value.trim();
 
-      if (!campaignContext || !ctaLink) return alert('Fill in Service Pitch and CTA Link.');
+      if (!ctaLink) return alert('Fill in CTA Link.');
 
       const res = await fetch('/api/start', {
         method: 'POST',
@@ -265,6 +344,7 @@
         document.getElementById('statFailed').textContent = s.failed;
         document.getElementById('statSkipped').textContent = s.skipped;
         document.getElementById('statTotal').textContent = s.total;
+        updateConfigSnapshot(s.config || null);
       } catch {}
     }
 
@@ -306,6 +386,15 @@
     }
 
     // Initial load
+    if (!document.getElementById('campaignContext').value.trim()) {
+      document.getElementById('campaignContext').value = DEFAULT_SERVICE_CONTEXT;
+    }
+
+    restoreSettings();
+    ['campaignContext', 'ctaLink', 'dailyLimit', 'modelId'].forEach(id => {
+      document.getElementById(id).addEventListener('input', persistSettings);
+    });
+    updateConfigSnapshot();
     refreshFiles();
     refreshStatus();
     refreshLogs();

@@ -28,10 +28,9 @@
 
       <div>
         <label class="text-[11px] text-slate-500 uppercase tracking-wider font-medium mb-1.5 block">
-          Service Pitch / Prompt
-          <span class="text-red-400">*</span>
+          Additional Service Notes (Optional)
         </label>
-        <textarea name="campaign_context" rows="4" class="w-full rounded-xl text-sm px-3.5 py-3 resize-none leading-relaxed" placeholder="We build AI voice agents for HVAC companies that answer calls 24/7, book appointments, and follow up with leads automatically..." required>{{ form.campaign_context }}</textarea>
+        <textarea name="campaign_context" rows="4" class="w-full rounded-xl text-sm px-3.5 py-3 resize-none leading-relaxed" placeholder="Optional: add extra campaign notes. Core service context is already included automatically.">{{ form.campaign_context or base_service_context }}</textarea>
       </div>
 
       <div>

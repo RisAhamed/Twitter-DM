@@ -30,6 +30,16 @@ NODE_BACKEND = os.getenv("NODE_BACKEND", "http://localhost:3000")
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 DEFAULT_MODEL = "openai/gpt-oss-120b"
 MAX_RETRIES = 3
+BASE_SERVICE_CONTEXT = (
+    "Our AI custom voice agents act like an always-on receptionist for HVAC, roofing, plumbing, and other local trades, "
+    "answering every call even when the team is on a job. They greet customers by name when possible, capture the exact "
+    "service issue (no cooling, leak, emergency, quote request), and then qualify the lead with smart questions about "
+    "location, urgency, and budget. Once qualified, they can instantly book appointments into the calendar, send confirmation "
+    "SMS/email, and notify the business owner so no hot lead ever slips away. Over time, the agent learns common questions for "
+    "that specific business (pricing ranges, service areas, warranties, promotions) and responds in a tone that matches the "
+    "owner's brand voice. This turns missed calls and after-hours inquiries into consistent, trackable leads, while giving "
+    "customers a fast, personalized experience that feels like talking to a dedicated office staff member."
+)
 
 
 # ── Helpers ─────────────────────────────────────────────
@@ -98,9 +108,53 @@ def list_csv_files():
     return sorted(f.name for f in DATA_DIR.glob("*.csv"))
 
 
+def build_campaign_context(user_context):
+    extra = (user_context or "").strip()
+    if not extra:
+        return BASE_SERVICE_CONTEXT
+    return f"{BASE_SERVICE_CONTEXT}\n\nAdditional campaign context:\n{extra}"
+
+
+def build_fallback_message(name, bio, campaign_context, cta_link):
+    first_name = (name or "there").strip().split()[0] if (name or "").strip() else "there"
+    bio = (bio or "").strip()
+    opener = f"Hey {first_name}, I noticed your background in {bio[:90]}{'…' if len(bio) > 90 else ''}." if bio else f"Hey {first_name}, hope you're doing well."
+    service_hint = next((s.strip() for s in (campaign_context or BASE_SERVICE_CONTEXT).replace("\n", " ").split(".") if s.strip()), "We help local service businesses convert more inbound calls into booked jobs")
+    return f"{opener} {service_hint}. If helpful, here's a quick demo link: {cta_link}".strip()
+
+
+def normalize_message(text, cta_link):
+    msg = " ".join((text or "").split()).strip()
+    if not msg:
+        return ""
+
+    import re
+    bad_patterns = [
+        r"let'?s craft",
+        r"we need to",
+        r"then pitch",
+        r"check characters",
+        r"use name",
+        r"provide pitch",
+        r"draft:",
+        r"^\.+\s*",
+    ]
+    if any(re.search(p, msg, flags=re.IGNORECASE) for p in bad_patterns):
+        return ""
+
+    if cta_link and cta_link not in msg:
+        msg = f"{msg} If helpful, here's a quick demo link: {cta_link}"
+
+    msg = " ".join(msg.split()).strip()
+    if len(msg) < 40 or len(msg) > 500:
+        return ""
+    return msg
+
+
 def generate_message_groq(name, bio, campaign_context, cta_link, model=None):
     """Call Groq with retry logic. Returns (message, error)."""
     use_model = model or DEFAULT_MODEL
+    final_context = build_campaign_context(campaign_context)
     has_bio = bool(bio and bio.strip())
 
     bio_rule = (
@@ -113,7 +167,7 @@ def generate_message_groq(name, bio, campaign_context, cta_link, model=None):
         "You are a friendly outreach copywriter. Write a casual, friendly 2-3 sentence Twitter DM.\n"
         "Rules:\n"
         f"{bio_rule}\n"
-        f"- Subtly pitch the following service: {campaign_context}\n"
+        f"- Subtly pitch the following service: {final_context}\n"
         f"- End the message by naturally sharing this link: {cta_link}\n"
         "- Do NOT be overly formal or salesy.\n"
         "- Do NOT use hashtags or emojis.\n"
@@ -149,13 +203,15 @@ def generate_message_groq(name, bio, campaign_context, cta_link, model=None):
                 if quoted:
                     text = quoted.group(1).strip()
 
-            if text and len(text) > 5:
-                return text, None
+            normalized = normalize_message(text, cta_link)
+            if normalized:
+                return normalized, None
             last_error = f"Empty/short response on attempt {attempt}/{MAX_RETRIES}"
         except Exception as e:
             last_error = str(e)
 
-    return None, last_error
+    fallback = build_fallback_message(name, bio, final_context, cta_link)
+    return fallback, f"Groq fallback used: {last_error or 'unknown error'}"
 
 
 # ── Routes ──────────────────────────────────────────────
@@ -179,6 +235,7 @@ def dashboard():
         pending_count=len(pending),
         logs=list(reversed(logs)),
         default_model=DEFAULT_MODEL,
+        base_service_context=BASE_SERVICE_CONTEXT,
     )
 
 
@@ -204,13 +261,13 @@ def test_message():
     form_data = {
         "name": request.form.get("name", ""),
         "bio": request.form.get("bio", ""),
-        "campaign_context": request.form.get("campaign_context", ""),
+        "campaign_context": request.form.get("campaign_context", BASE_SERVICE_CONTEXT),
         "cta_link": request.form.get("cta_link", ""),
         "model": request.form.get("model", DEFAULT_MODEL),
     }
     if request.method == "POST":
-        if not form_data["campaign_context"] or not form_data["cta_link"]:
-            flash("Service Pitch and CTA Link are required.", "error")
+        if not form_data["cta_link"]:
+            flash("CTA Link is required.", "error")
         else:
             msg, err = generate_message_groq(
                 form_data["name"], form_data["bio"],
@@ -224,7 +281,14 @@ def test_message():
                 error = err
                 flash(f"Groq error: {err}", "error")
 
-    return render_template("test_message.html", result=result, error=error, form=form_data, default_model=DEFAULT_MODEL)
+    return render_template(
+        "test_message.html",
+        result=result,
+        error=error,
+        form=form_data,
+        default_model=DEFAULT_MODEL,
+        base_service_context=BASE_SERVICE_CONTEXT,
+    )
 
 
 @app.route("/api/test-message", methods=["POST"])

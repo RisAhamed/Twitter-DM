@@ -5,12 +5,14 @@ import { dirname, join, extname } from 'path';
 import { writeFile, appendFile, access } from 'fs/promises';
 import { readLeads, listDataFiles, DATA_DIR } from './src/leads.js';
 import { getSentLog, appendSentLog } from './src/logger.js';
-import { generateMessage } from './src/groq.js';
+import { generateMessage, buildCampaignContext } from './src/groq.js';
 import { sendDM, closeBrowser } from './src/puppeteer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const METRICS_PATH = join(__dirname, 'logs', 'dm_metrics.csv');
+const MIN_DELAY_SEC = 72;
+const MAX_DELAY_SEC = 90;
 
 const app = express();
 app.use(express.json());
@@ -19,7 +21,20 @@ app.use(express.static(join(__dirname, 'public')));
 // ---------- state ----------
 let campaignRunning = false;
 let campaignAbort = false;
-let campaignStats = { total: 0, sent: 0, skipped: 0, failed: 0, current: '' };
+let campaignStats = {
+  total: 0,
+  sent: 0,
+  skipped: 0,
+  failed: 0,
+  current: '',
+  config: {
+    model: '',
+    ctaLink: '',
+    dailyLimit: 0,
+    notesLength: 0,
+    startedAt: '',
+  },
+};
 
 // ---------- API routes ----------
 
@@ -88,18 +103,19 @@ app.get('/api/leads', async (_req, res) => {
 // Test Groq message generation (no DM sent)
 app.post('/api/test-message', async (req, res) => {
   const { name, bio, campaignContext, ctaLink, model } = req.body;
-  if (!campaignContext || !ctaLink) {
-    return res.status(400).json({ error: 'campaignContext and ctaLink are required.' });
+  if (!ctaLink) {
+    return res.status(400).json({ error: 'ctaLink is required.' });
   }
   try {
+    const finalContext = buildCampaignContext(campaignContext);
     const message = await generateMessage({
       name: name || 'Test User',
-      bio: bio || 'HVAC professional',
-      campaignContext,
+      bio: bio || '',
+      campaignContext: finalContext,
       ctaLink,
       model: (model || '').trim() || undefined,
     });
-    res.json({ message });
+    res.json({ message, campaignContextUsed: finalContext });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -112,12 +128,13 @@ app.post('/api/start', async (req, res) => {
   }
 
   const { campaignContext, ctaLink, dailyLimit, model } = req.body;
-  if (!campaignContext || !ctaLink || !dailyLimit) {
+  if (!ctaLink || !dailyLimit) {
     return res.status(400).json({ error: 'Missing required fields.' });
   }
 
   const limit = Math.min(Math.max(parseInt(dailyLimit, 10) || 1, 1), 100);
   const selectedModel = (model || '').trim() || undefined;
+  const finalCampaignContext = buildCampaignContext(campaignContext);
 
   // respond immediately — campaign runs in background
   res.json({ message: `Campaign started. Target: ${limit} DMs.` });
@@ -125,7 +142,20 @@ app.post('/api/start', async (req, res) => {
   // --- background campaign loop ---
   campaignRunning = true;
   campaignAbort = false;
-  campaignStats = { total: 0, sent: 0, skipped: 0, failed: 0, current: '' };
+  campaignStats = {
+    total: 0,
+    sent: 0,
+    skipped: 0,
+    failed: 0,
+    current: '',
+    config: {
+      model: selectedModel || 'openai/gpt-oss-120b',
+      ctaLink,
+      dailyLimit: limit,
+      notesLength: (campaignContext || '').trim().length,
+      startedAt: new Date().toISOString(),
+    },
+  };
 
   try {
     const leads = await readLeads();
@@ -144,30 +174,31 @@ app.post('/api/start', async (req, res) => {
 
       campaignStats.current = lead.username;
       console.log(`\n[Campaign] Processing @${lead.username}...`);
+      let generatedMessage = '';
 
       try {
         // 1. Generate personalised message
-        const message = await generateMessage({
+        generatedMessage = await generateMessage({
           name: lead.name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
           bio: lead.bio || '',
-          campaignContext,
+          campaignContext: finalCampaignContext,
           ctaLink,
           model: selectedModel,
         });
-        console.log(`[Groq] Message for @${lead.username}: ${message}`);
+        console.log(`[Groq] Message for @${lead.username}: ${generatedMessage}`);
 
         // 2. Send DM via Puppeteer
-        await sendDM(lead.username, message);
+        await sendDM(lead.username, generatedMessage);
 
         // 3. Log success
         await appendSentLog({
           username: lead.username,
           timestamp: new Date().toISOString(),
-          message,
+          message: generatedMessage,
           status: 'Sent',
           error: '',
         });
-        await appendMetrics({ username: lead.username, status: 'Sent', error: '', message });
+        await appendMetrics({ username: lead.username, status: 'Sent', error: '', message: generatedMessage });
         sentCount++;
         campaignStats.sent++;
         console.log(`[Campaign] ✓ Sent to @${lead.username} (${sentCount}/${limit})`);
@@ -176,17 +207,17 @@ app.post('/api/start', async (req, res) => {
         await appendSentLog({
           username: lead.username,
           timestamp: new Date().toISOString(),
-          message: '',
+          message: generatedMessage,
           status: 'Failed',
           error: err.message,
         });
-        await appendMetrics({ username: lead.username, status: 'Failed', error: err.message, message: '' });
+        await appendMetrics({ username: lead.username, status: 'Failed', error: err.message, message: generatedMessage });
         console.error(`[Campaign] ✗ Failed for @${lead.username}: ${err.message}`);
       }
 
-      // 4. Rate-limit pause (~90-120 sec → 30-40 DMs/hour) — skip on last message
+      // 4. Rate-limit pause (~72-90 sec → ~40-50 DMs/hour) — skip on last message
       if (!campaignAbort && sentCount < limit) {
-        const delaySec = Math.floor(Math.random() * 31) + 90; // 90-120 sec
+        const delaySec = Math.floor(Math.random() * (MAX_DELAY_SEC - MIN_DELAY_SEC + 1)) + MIN_DELAY_SEC;
         console.log(`[Campaign] Sleeping ${delaySec}s before next DM...`);
         await sleep(delaySec * 1000, () => campaignAbort);
       }
